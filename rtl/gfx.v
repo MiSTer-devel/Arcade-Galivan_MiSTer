@@ -1,6 +1,6 @@
 
 module gfx(
-  input             clk,
+  input           clk,
   output      [7:0] h,
   output      [7:0] v,
 
@@ -32,6 +32,8 @@ module gfx(
 
   output reg [15:0] spr_gfx_addr,
   input       [7:0] spr_gfx_data,
+  output reg        spr_gfx_read,
+  input             spr_gfx_rdy,
 
   output reg  [7:0] spr_bnk_addr,
   input       [3:0] spr_bnk_data,
@@ -45,7 +47,10 @@ module gfx(
   output reg        frame,
 
   input             h_flip,
-  input             v_flip
+  input             v_flip,
+
+  input             vs
+
 );
 
 reg [3:0] next;
@@ -56,7 +61,7 @@ reg  [7:0] vv;
 wire [15:0] sh = hh + scrollx;
 wire [15:0] sv = vv + scrolly;
 
-reg prio[256*256:0];
+reg prio[256*256-1:0];
 
 assign h = h_flip ? 256 - hh : hh;
 assign v = v_flip ? 256 - vv : vv;
@@ -156,6 +161,7 @@ always @(posedge clk) begin
       end
     end
 
+    4'd5: state <= spr_gfx_rdy ? next : 4'd5;
     4'd6: state <= next;
     4'd7: state <= 4'd6;
 
@@ -166,16 +172,18 @@ always @(posedge clk) begin
 
       spr_gfx_addr <= { px[1], spr_data[17], spr_data[15:8], py[3:0], px[3:2] };
       spr_bnk_addr <= { spr_data[17], spr_data[15:10] };
+      spr_gfx_read <= 1'b1;
       done <= 1'b0;
 
       next <= 4'd9;
-      state <= 4'd7;
+      state <= 4'd5;
 
     end
 
     4'd9: begin
 
       spr_lut_addr <= { spr_bnk_data[3:0], sp_color_code };
+      spr_gfx_read <= 1'b0;
 
       next <= 4'd10;
       state <= 4'd7;
@@ -194,7 +202,7 @@ always @(posedge clk) begin
 
     4'd11: begin
 
-      if (spr_lut_data[3:0] != 4'd15 && !tx_priority && hh < 250) begin
+      if (spr_lut_data[3:0] != 4'd15 && hh < 250 && !tx_priority) begin
         r <= prom1_data[3:1];
         g <= prom2_data[3:1];
         b <= prom3_data[3:2];
@@ -210,7 +218,7 @@ always @(posedge clk) begin
         next <= 4'd8;
         state <= 4'd7;
         if (spr_addr == 6'h3c) begin
-          state <= 4'd0;
+          state <= 4'd12;
           vv <= 8'd0;
           hh <= 8'd0;
           frame <= 1'b1;
@@ -219,7 +227,10 @@ always @(posedge clk) begin
 
     end
 
+    4'd12: state <= vs ? 8'd0 : 8'd12;
+
   endcase
 end
 
 endmodule
+

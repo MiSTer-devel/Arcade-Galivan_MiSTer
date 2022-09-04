@@ -185,7 +185,7 @@ jtopl_pg u_pg(
     .viben_I    ( viben_I       ),
     // phase operation
     .pg_rst_II  ( pg_rst_II     ),
-    
+
     .keycode_II ( keycode_II    ),
     .phase_IV   ( phase_IV      )
 );
@@ -232,7 +232,7 @@ jtopl_op #(.OPL_TYPE(OPL_TYPE)) u_op(
     .eg_atten_II( eg_V          ), // output from envelope generator
     .fb_I       ( fb_I          ), // voice feedback
     .wavsel_I   ( wavsel_I      ), // sine mask (OPL2)
-    
+
     .con_I      ( con_I         ),
     .op_result  ( op_result     ),
     .op_out     ( op_out        ),
@@ -250,15 +250,4 @@ jtopl_acc u_acc(
     .snd        ( snd           )
 );
 
-//--- Capture data RndMnkIII insert at the end of jtopl.v ---
-//integer fsnd;
-//initial begin
-//    fsnd = $fopen("YM3526_audio.raw","wb");
-//end
-//wire [31:0] snd32;
-//assign snd32 = {snd, 16'h0000};
-//always @(negedge zero) begin
-//    $fwrite(fsnd,"%u", snd32);
-//end
 endmodule
-    

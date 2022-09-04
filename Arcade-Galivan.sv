@@ -177,7 +177,7 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
+// assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_SL = 0;
@@ -257,12 +257,15 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 ///////////////////////   CLOCKS   ///////////////////////////////
 
-wire clk_sys;
+wire locked;
+wire clk_sys, clk_ram;
 pll pll
 (
   .refclk(CLK_50M),
   .rst(0),
-  .outclk_0(clk_sys)
+  .outclk_0(clk_sys),
+  .outclk_1(clk_ram),
+  .locked(locked)
 );
 
 wire reset = RESET | status[0] | buttons[1];
@@ -295,6 +298,16 @@ video video(
   .vcount ( vcount  )
 );
 
+// wire rotate_ccw = 1'b1;
+// wire no_rotate = status[5] | (mod==mod_tylz) | (mod==mod_insector) | direct_video;
+// screen_rotate screen_rotate (.*);
+
+// arcade_video #(256,8,0) arcade_video(
+//   .*,
+//   .clk_video(clk_40),
+//   .RGB_in({ rgbout[23:16], rgbout[15:8], rgbout[7:0] })
+// );
+
 /******** VRAM FRAME BUFFERS ********/
 
 wire [7:0] hh, vv;
@@ -302,8 +315,44 @@ wire [2:0] red, green;
 wire [1:0] blue;
 wire color_ready, frame;
 
-// reg [7:0] vram[256*256*2:0];
+reg [7:0] vram[256*256*2-1:0];
+reg [16:0] vram_layer1, vram_layer2;
+
+always @(posedge frame) begin
+  if (vram_layer1 == 17'd0) begin
+    vram_layer1 <= 256*256;
+    vram_layer2 <= 0;
+  end
+  else begin
+    vram_layer1 <= 0;
+    vram_layer2 <= 256*256;
+  end
+end
+
+always @(posedge clk_sys) begin
+  if (color_ready) vram[vram_layer1+vv*256+hh] <= { red, green, blue };
+  if (VGA_DE) { VGA_R[7:5], VGA_G[7:5], VGA_B[7:6] } <= vram[vram_layer2+vcount*256+hcount];
+end
+
+
+// wire [7:0] hh, vv;
+// wire [2:0] red, green;
+// reg  [2:0] vga_red, vga_green;
+// wire [1:0] blue;
+// reg  [1:0] vga_blue;
 // reg [16:0] vram_layer1, vram_layer2;
+// wire color_ready, frame;
+
+// assign VGA_R[7:5] = vga_red;
+// assign VGA_G[7:5] = vga_green;
+// assign VGA_B[7:6] = vga_blue;
+
+// reg  [24:0] sdram_addr;
+// reg  [7:0]  sdram_din;
+// reg         sdram_rd;
+// reg         sdram_wr;
+// wire [7:0]  sdram_dout;
+// wire        sdram_rdy;
 
 // always @(posedge frame) begin
 //   if (vram_layer1 == 17'd0) begin
@@ -316,17 +365,80 @@ wire color_ready, frame;
 //   end
 // end
 
-// always @(posedge clk_sys) begin
-//   if (color_ready) vram[vram_layer1+vv*256+hh] <= { red, green, blue };
-//   if (VGA_DE) { VGA_R[7:5], VGA_G[7:5], VGA_B[7:6] } <= vram[vram_layer2+vcount*256+hcount];
+// reg [8:0] oldh;
+// reg old_color_ready;
+// reg ch1_rq, ch2_rq;
+// reg [1:0] arbiter_state, ch;
+// always @(posedge clk_ram) begin
+//   old_color_ready <= color_ready;
+//   oldh <= hcount;
+//   if (~old_color_ready & color_ready) ch1_rq <= 1'b1;
+//   if (VGA_DE && oldh != hcount) ch2_rq <= 1'b1;
+//   case (arbiter_state)
+//     2'd0: begin
+//       if (ch1_rq) begin
+//         ch <= 2'd1;
+//         sdram_addr <= vram_layer1 + vv*256 + hh;
+//         sdram_din <= { red, green, blue };
+//         sdram_wr <= 1'b1;
+//         arbiter_state <= 2'd1;
+//       end
+//       else if (ch2_rq) begin
+//         ch <= 2'd2;
+//         sdram_addr <= vram_layer2 + vcount*256 + hcount;
+//         sdram_rd <= 1'b1;
+//         arbiter_state <= 2'd1;
+//       end
+//     end
+//     2'd1: arbiter_state <= 2'd2;
+//     2'd2: begin
+//       sdram_wr <= 1'b0;
+//       sdram_rd <= 1'b0;
+//       if (sdram_rdy) begin
+//         arbiter_state <= 2'd0;
+//         if (ch == 2'd1) begin
+//           ch1_rq <= 1'b0;
+//         end
+//         else if (ch == 2'd2) begin
+//           ch2_rq <= 1'b0;
+//           { vga_red, vga_green, vga_blue } <= sdram_dout;
+//         end
+//       end
+//     end
+//   endcase
 // end
 
-reg [7:0] vram[256*256:0];
+// always @(posedge clk_ram) begin
+//   old_color_ready <= color_ready;
+//   oldh <= hcount;
+// end
 
-always @(posedge clk_sys) begin
-  if (color_ready) vram[vv*256+hh] <= { red, green, blue };
-  if (VGA_DE) { VGA_R[7:5], VGA_G[7:5], VGA_B[7:6] } <= vram[vcount*256+hcount];
-end
+wire gfx3_download = ioctl_addr >= 27'h40000 && ioctl_addr < 27'h50000;
+
+wire [24:0] core_sdram_addr;
+wire        core_sdram_rd;
+wire [24:0] sdram_addr = gfx3_download ? ioctl_addr - 27'h40000 : core_sdram_addr;
+wire [15:0] sdram_din  = ioctl_dout;
+wire        sdram_rd   = gfx3_download ? 1'b0 : core_sdram_rd;
+wire        sdram_wr   = gfx3_download ? ioctl_wr : 1'b0;
+wire [15:0] sdram_dout;
+wire        sdram_rdy;
+
+wire [7:0]  core_sdram_dout = sdram_dout[7:0];
+
+sdram sdram
+(
+  .*,
+  .init  ( ~locked    ),
+  .clk   ( clk_ram    ),
+  .addr  ( sdram_addr ),
+  .wtbt  ( 0          ),
+  .dout  ( sdram_dout ),
+  .din   ( sdram_din  ),
+  .rd    ( sdram_rd   ),
+  .we    ( sdram_wr   ),
+  .ready ( sdram_rdy  )
+);
 
 /******** AUDIO MIX ********/
 
@@ -334,6 +446,7 @@ wire [15:0] sound;
 
 assign AUDIO_S = 1'b1;
 assign AUDIO_L = sound;
+
 assign AUDIO_R = sound;
 assign AUDIO_MIX = 2'd3;
 
@@ -345,37 +458,41 @@ always @(posedge clk_sys)
 
 wire core_download = ioctl_download && (ioctl_index==0);
 
-wire [7:0] j1 = ~joy0;
-wire [7:0] j2 = ~joy1;
-wire [7:0] p1 = sw[0];
-wire [7:0] p2 = sw[1];
+wire [7:0] j1 = ~joy0[7:0];
+wire [7:0] j2 = ~joy1[7:0];
+wire [7:0] p1 = sw[0]; // dsw1
+wire [7:0] p2 = sw[1]; // dsw2
 
-wire [7:0] system = 8'b11111111;
+wire service = 1'b1;
+wire [7:0] system = { 4'b111, service , ~joy0[11], ~joy0[10], ~joy0[9], ~joy0[8] };
 
 core u_core(
-  .reset          ( reset          ),
-  .clk_sys        ( clk_sys        ),
-  .j1             ( j1             ),
-  .j2             ( j2             ),
-  .p1             ( p1             ),
-  .p2             ( p2             ),
-  .system         ( system         ),
-  .ioctl_index    ( ioctl_index    ),
-  .ioctl_download ( core_download  ),
-  .ioctl_addr     ( ioctl_addr     ),
-  .ioctl_dout     ( ioctl_dout     ),
-  .ioctl_wr       ( ioctl_wr       ),
-  .hh             ( hh             ),
-  .vv             ( vv             ),
-  .red            ( red            ),
-  .green          ( green          ),
-  .blue           ( blue           ),
-  .color_ready    ( color_ready    ),
-  .frame          ( frame          ),
-  .vs             ( VSync          ),
-  .sound          ( sound          )
+  .reset          ( reset            ),
+  .clk_sys        ( clk_sys          ),
+  .j1             ( j1               ),
+  .j2             ( j2               ),
+  .p1             ( p1               ),
+  .p2             ( p2               ),
+  .system         ( system           ),
+  .ioctl_index    ( ioctl_index      ),
+  .ioctl_download ( core_download    ),
+  .ioctl_addr     ( ioctl_addr       ),
+  .ioctl_dout     ( ioctl_dout       ),
+  .ioctl_wr       ( ioctl_wr         ),
+  .sdram_data     ( core_sdram_dout  ),
+  .sdram_addr     ( core_sdram_addr  ),
+  .sdram_rd       ( core_sdram_rd    ),
+  .sdram_rdy      ( sdram_rdy        ),
+  .hh             ( hh               ),
+  .vv             ( vv               ),
+  .red            ( red              ),
+  .green          ( green            ),
+  .blue           ( blue             ),
+  .color_ready    ( color_ready      ),
+  .frame          ( frame            ),
+  .vs             ( VSync            ),
+  .sound          ( sound            )
 );
-
 
 reg  [26:0] act_cnt;
 always @(posedge clk_sys) act_cnt <= act_cnt + 1'd1;

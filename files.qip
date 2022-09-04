@@ -7,6 +7,7 @@ set_global_assignment -name VERILOG_FILE rtl/dpram.v
 set_global_assignment -name VERILOG_FILE rtl/gfx.v
 set_global_assignment -name VERILOG_FILE rtl/ram.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/spram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
 set_global_assignment -name VERILOG_FILE rtl/video.v
 
 set_global_assignment -name SYSTEMVERILOG_FILE Arcade-Galivan.sv

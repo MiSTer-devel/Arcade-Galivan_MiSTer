@@ -15,6 +15,11 @@ module core(
   input [15:0] ioctl_dout,
   input        ioctl_wr,
 
+  input  [7:0]  sdram_data,
+  output [24:0] sdram_addr,
+  output        sdram_rd,
+  input         sdram_rdy,
+
   output [7:0] hh,
   output [7:0] vv,
   output [2:0] red,
@@ -24,20 +29,16 @@ module core(
   output       frame,
 
   output [15:0] sound,
-
   input vs
 );
 
-// 48MHz clock
-// 48/12=4
-// 48/8=6
 
 /******** CLOCKS ********/
 
 wire clk_en_4, clk_en_6, acpu_irq_en;
 clk_en #(7)  mcpu_clk_en(clk_sys, clk_en_6);
 clk_en #(11) acpu_clk_en(clk_sys, clk_en_4);
-clk_en #(61000) acpu_irq_cen(clk_sys, acpu_irq_en);
+clk_en #(6100) acpu_irq_cen(clk_sys, acpu_irq_en);
 
 /******** MCPU ********/
 
@@ -46,10 +47,17 @@ wire [15:0] mcpu_addr;
 wire  [7:0] mcpu_dout;
 wire        mcpu_rd_n;
 wire        mcpu_wr_n;
-wire        mcpu_int_n = vs;
 wire        mcpu_m1_n;
 wire        mcpu_mreq_n;
 wire        mcpu_iorq_n;
+reg         mcpu_int_n;
+
+reg oldvs;
+always @(posedge clk_sys) begin
+  oldvs <= vs;
+  if (oldvs & ~vs) mcpu_int_n <= 1'b0;
+  if (~acpu_iorq_n & ~acpu_m1_n) mcpu_int_n <= 1'b1;
+end
 
 tv80s mcpu(
   .reset_n ( ~reset      ),
@@ -219,8 +227,7 @@ always @(posedge clk_sys) begin
       8'h42: { layers, scrollx[10:8] } <= { mcpu_dout[7:5], mcpu_dout[2:0] };
       8'h43: scrolly[7:0]  <= mcpu_dout;
       8'h44: scrolly[10:8] <= mcpu_dout[2:0];
-      8'h45: snd_latch <= { mcpu_dout[7:1], 1'b1 };
-      8'h47: /* vblank ack */;
+      8'h45: snd_latch <= { mcpu_dout[6:0], 1'b1 };
       8'hc0: mcpu_io_data <= 8'h58;
     endcase
   end
@@ -251,8 +258,10 @@ wire        acpu_mreq_n;
 wire        acpu_iorq_n;
 reg         acpu_int_n;
 
+reg old_acpu_irq_en;
 always @(posedge clk_sys) begin
-  if (acpu_irq_en) acpu_int_n <= 1'b0;
+  old_acpu_irq_en <= acpu_irq_en;
+  if (~old_acpu_irq_en & acpu_irq_en) acpu_int_n <= 1'b0;
   if (~acpu_iorq_n & ~acpu_m1_n) acpu_int_n <= 1'b1;
 end
 
@@ -351,7 +360,7 @@ wire ym3526_addr = acpu_addr[0];
 jtopl ym3526(
     .rst    ( reset         ),
     .clk    ( clk_sys       ),
-    .cen    ( clk_en_4      ),
+    .cen    ( clk_en_6      ),
     .din    ( acpu_dout     ),
     .addr   ( ym3526_addr   ),
     .cs_n   ( 1'b0          ),
@@ -425,8 +434,12 @@ gfx gfx(
 
   .spr_addr     ( gfx_spr_addr   ),
   .spr_data     ( mcpu_spr_qb    ),
-  .spr_gfx_addr ( gfx3_addr      ),
-  .spr_gfx_data ( gfx_rom3_q     ),
+  // .spr_gfx_addr ( gfx3_addr      ),
+  // .spr_gfx_data ( gfx_rom3_q     ),
+  .spr_gfx_addr ( sdram_addr     ),
+  .spr_gfx_data ( sdram_data     ),
+  .spr_gfx_read ( sdram_rd       ),
+  .spr_gfx_rdy  ( sdram_rdy      ),
   .spr_bnk_addr ( gfx_sprom_addr ),
   .spr_bnk_data ( sprom_q        ),
   .spr_lut_addr ( gfx_prom4_addr ),
@@ -437,13 +450,15 @@ gfx gfx(
   .prom2_data   ( prom2_q        ),
   .prom3_data   ( prom3_q        ),
 
-  .r            ( r              ),
-  .g            ( g              ),
-  .b            ( b              ),
+  .r            ( red            ),
+  .g            ( green          ),
+  .b            ( blue           ),
   .done         ( color_ready    ),
   .frame        ( frame          ),
   .h_flip       ( 1'b1           ),
-  .v_flip       ( flip           )
+  .v_flip       ( flip           ),
+
+  .vs           ( vs             )
 
 );
 
@@ -455,8 +470,8 @@ wire [13:0] gfx_rom1_addr   = ioctl_download ? ioctl_addr - 27'h1c000 : gfx1_add
 wire        gfx_rom1_wren_a = ioctl_download && ioctl_addr >= 27'h1c000 && ioctl_addr < 27'h20000 ? ioctl_wr : 1'b0;
 wire [16:0] gfx_rom2_addr   = ioctl_download ? ioctl_addr - 27'h20000 : gfx2_addr;
 wire        gfx_rom2_wren_a = ioctl_download && ioctl_addr >= 27'h20000 && ioctl_addr < 27'h40000 ? ioctl_wr : 1'b0;
-wire [15:0] gfx_rom3_addr   = ioctl_download ? ioctl_addr - 27'h40000 : gfx3_addr;
-wire        gfx_rom3_wren_a = ioctl_download && ioctl_addr >= 27'h40000 && ioctl_addr < 27'h50000 ? ioctl_wr : 1'b0;
+// wire [15:0] gfx_rom3_addr   = ioctl_download ? ioctl_addr - 27'h40000 : gfx3_addr;
+// wire        gfx_rom3_wren_a = ioctl_download && ioctl_addr >= 27'h40000 && ioctl_addr < 27'h50000 ? ioctl_wr : 1'b0;
 
 wire [13:0] gfx_rom41_addr   = ioctl_download ? ioctl_addr - 27'h50000 : gfx4_addr;
 wire        gfx_rom41_wren_a = ioctl_download && ioctl_addr >= 27'h50000 && ioctl_addr < 27'h54000 ? ioctl_wr : 1'b0;
@@ -482,14 +497,14 @@ dpram #(17,8) gfx_rom2(
   .wren_a    ( gfx_rom2_wren_a )
 );
 
-dpram #(16,8) gfx_rom3(
-  .clock     ( clk_sys         ),
-  .address_a ( gfx_rom3_addr   ),
-  .data_a    ( gfx_rom_data    ),
-  .q_a       ( gfx_rom3_q      ),
-  .rden_a    ( 1'b1            ),
-  .wren_a    ( gfx_rom3_wren_a )
-);
+// dpram #(16,8) gfx_rom3(
+//   .clock     ( clk_sys         ),
+//   .address_a ( gfx_rom3_addr   ),
+//   .data_a    ( gfx_rom_data    ),
+//   .q_a       ( gfx_rom3_q      ),
+//   .rden_a    ( 1'b1            ),
+//   .wren_a    ( gfx_rom3_wren_a )
+// );
 
 dpram #(14,8) gfx_rom41(
   .clock     ( clk_sys         ),
@@ -572,9 +587,9 @@ dpram #(8,4) sprom(
 
 /******** COLOR MIX ********/
 
-assign red   = r;
-assign green = g;
-assign blue  = b;
+// assign red   = r;
+// assign green = g;
+// assign blue  = b;
 
 
 endmodule
