@@ -178,9 +178,9 @@ assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
+// assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
-assign VGA_SL = 0;
+// assign VGA_SL = 0;
 assign VGA_F1 = 0;
 assign VGA_SCALER  = 0;
 assign VGA_DISABLE = 0;
@@ -207,6 +207,9 @@ localparam CONF_STR = {
   "Galivan;;",
   "-;",
   "O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+  "OFH,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+  "O5,Orientation,Vert,Horz;",
+  "OB,VFlip,Off,On;",
   "-;",
   "DIP;",
   "-;",
@@ -215,7 +218,8 @@ localparam CONF_STR = {
   "V,v",`BUILD_DATE
 };
 
-wire forced_scandoubler;
+wire         direct_video;
+wire         forced_scandoubler;
 wire   [1:0] buttons;
 wire [127:0] status;
 wire  [10:0] ps2_key;
@@ -230,18 +234,21 @@ wire        ioctl_wait;
 wire [15:0] joy0;
 wire [15:0] joy1;
 
+wire [21:0] gamma_bus;
+
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
   .clk_sys(clk_sys),
   .HPS_BUS(HPS_BUS),
   .EXT_BUS(),
-  .gamma_bus(),
+  .gamma_bus(gamma_bus),
+  .direct_video(direct_video),
 
   .forced_scandoubler(forced_scandoubler),
 
   .buttons(buttons),
   .status(status),
-  .status_menumask({status[5]}),
+  .status_menumask({direct_video}),
 
   .ioctl_download(ioctl_download),
   .ioctl_wr(ioctl_wr),
@@ -255,7 +262,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
   .ps2_key(ps2_key)
 );
 
-///////////////////////   CLOCKS   ///////////////////////////////
+/******** CLOCKS ********/
 
 wire locked;
 wire clk_sys, clk_ram;
@@ -270,7 +277,7 @@ pll pll
 
 wire reset = RESET | status[0] | buttons[1];
 
-//////////////////////////////////////////////////////////////////
+/******** VIDEO ********/
 
 wire HBlank;
 wire HSync;
@@ -281,12 +288,8 @@ wire [8:0] hcount, vcount;
 wire clk_vid;
 clk_en #(8) clk_en_main(clk_sys, clk_vid);
 
-assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = clk_vid;
-
-assign VGA_DE = ~(HBlank | VBlank);
-assign VGA_HS = HSync;
-assign VGA_VS = VSync;
+wire  ce_pix = clk_vid;
+wire [2:0] fx = status[17:15];
 
 video video(
   .clk    ( clk_vid ),
@@ -298,21 +301,50 @@ video video(
   .vcount ( vcount  )
 );
 
-// wire rotate_ccw = 1'b1;
-// wire no_rotate = status[5] | (mod==mod_tylz) | (mod==mod_insector) | direct_video;
-// screen_rotate screen_rotate (.*);
+arcade_video #(256,8,0) arcade_video(
+  .*,
+  .clk_video          ( clk_sys                 ),
+  .ce_pix             ( ce_pix                  ),
+  .RGB_in             ( { vred, vgreen, vblue } ),
+  .HBlank             ( HBlank                  ),
+  .VBlank             ( VBlank                  ),
+  .HSync              ( HSync                   ),
+  .VSync              ( VSync                   ),
+  .fx                 ( fx                      ),
+  .forced_scandoubler ( forced_scandoubler      ),
+  .gamma_bus          ( gamma_bus               )
+);
 
-// arcade_video #(256,8,0) arcade_video(
-//   .*,
-//   .clk_video(clk_40),
-//   .RGB_in({ rgbout[23:16], rgbout[15:8], rgbout[7:0] })
-// );
+// assign CE_PIXEL = ce_pix;
+// assign CLK_VIDEO = clk_sys;
+// assign VGA_R[7:5] = vred;
+// assign VGA_G[7:5] = vgreen;
+// assign VGA_B[7:6] = vblue;
+// assign VGA_HS = HSync;
+// assign VGA_VS = VSync;
+// assign VGA_DE = ~(VBlank | HBlank);
+
+wire video_rotated;
+wire rotate_ccw = 1'b1;
+wire no_rotate = status[5] | direct_video;
+wire flip = 0;
+
+screen_rotate screen_rotate (
+  .*,
+  .rotate_ccw    ( rotate_ccw    ),
+  .no_rotate     ( no_rotate     ),
+  .flip          ( flip          ),
+  .video_rotated ( video_rotated )
+);
 
 /******** VRAM FRAME BUFFERS ********/
 
 wire [7:0] hh, vv;
 wire [2:0] red, green;
 wire [1:0] blue;
+reg  [2:0] vred, vgreen;
+reg  [1:0] vblue;
+
 wire color_ready, frame;
 
 reg [7:0] vram[256*256*2-1:0];
@@ -331,114 +363,8 @@ end
 
 always @(posedge clk_sys) begin
   if (color_ready) vram[vram_layer1+vv*256+hh] <= { red, green, blue };
-  if (VGA_DE) { VGA_R[7:5], VGA_G[7:5], VGA_B[7:6] } <= vram[vram_layer2+vcount*256+hcount];
+  if (VGA_DE) { vred, vgreen, vblue } <= vram[vram_layer2+vcount*256+hcount];
 end
-
-
-// wire [7:0] hh, vv;
-// wire [2:0] red, green;
-// reg  [2:0] vga_red, vga_green;
-// wire [1:0] blue;
-// reg  [1:0] vga_blue;
-// reg [16:0] vram_layer1, vram_layer2;
-// wire color_ready, frame;
-
-// assign VGA_R[7:5] = vga_red;
-// assign VGA_G[7:5] = vga_green;
-// assign VGA_B[7:6] = vga_blue;
-
-// reg  [24:0] sdram_addr;
-// reg  [7:0]  sdram_din;
-// reg         sdram_rd;
-// reg         sdram_wr;
-// wire [7:0]  sdram_dout;
-// wire        sdram_rdy;
-
-// always @(posedge frame) begin
-//   if (vram_layer1 == 17'd0) begin
-//     vram_layer1 <= 256*256;
-//     vram_layer2 <= 0;
-//   end
-//   else begin
-//     vram_layer1 <= 0;
-//     vram_layer2 <= 256*256;
-//   end
-// end
-
-// reg [8:0] oldh;
-// reg old_color_ready;
-// reg ch1_rq, ch2_rq;
-// reg [1:0] arbiter_state, ch;
-// always @(posedge clk_ram) begin
-//   old_color_ready <= color_ready;
-//   oldh <= hcount;
-//   if (~old_color_ready & color_ready) ch1_rq <= 1'b1;
-//   if (VGA_DE && oldh != hcount) ch2_rq <= 1'b1;
-//   case (arbiter_state)
-//     2'd0: begin
-//       if (ch1_rq) begin
-//         ch <= 2'd1;
-//         sdram_addr <= vram_layer1 + vv*256 + hh;
-//         sdram_din <= { red, green, blue };
-//         sdram_wr <= 1'b1;
-//         arbiter_state <= 2'd1;
-//       end
-//       else if (ch2_rq) begin
-//         ch <= 2'd2;
-//         sdram_addr <= vram_layer2 + vcount*256 + hcount;
-//         sdram_rd <= 1'b1;
-//         arbiter_state <= 2'd1;
-//       end
-//     end
-//     2'd1: arbiter_state <= 2'd2;
-//     2'd2: begin
-//       sdram_wr <= 1'b0;
-//       sdram_rd <= 1'b0;
-//       if (sdram_rdy) begin
-//         arbiter_state <= 2'd0;
-//         if (ch == 2'd1) begin
-//           ch1_rq <= 1'b0;
-//         end
-//         else if (ch == 2'd2) begin
-//           ch2_rq <= 1'b0;
-//           { vga_red, vga_green, vga_blue } <= sdram_dout;
-//         end
-//       end
-//     end
-//   endcase
-// end
-
-// always @(posedge clk_ram) begin
-//   old_color_ready <= color_ready;
-//   oldh <= hcount;
-// end
-
-wire gfx3_download = ioctl_addr >= 27'h40000 && ioctl_addr < 27'h50000;
-
-wire [24:0] core_sdram_addr;
-wire        core_sdram_rd;
-wire [24:0] sdram_addr = gfx3_download ? ioctl_addr - 27'h40000 : core_sdram_addr;
-wire [15:0] sdram_din  = ioctl_dout;
-wire        sdram_rd   = gfx3_download ? 1'b0 : core_sdram_rd;
-wire        sdram_wr   = gfx3_download ? ioctl_wr : 1'b0;
-wire [15:0] sdram_dout;
-wire        sdram_rdy;
-
-wire [7:0]  core_sdram_dout = sdram_dout[7:0];
-
-sdram sdram
-(
-  .*,
-  .init  ( ~locked    ),
-  .clk   ( clk_ram    ),
-  .addr  ( sdram_addr ),
-  .wtbt  ( 0          ),
-  .dout  ( sdram_dout ),
-  .din   ( sdram_din  ),
-  .rd    ( sdram_rd   ),
-  .we    ( sdram_wr   ),
-  .ready ( sdram_rdy  )
-);
 
 /******** AUDIO MIX ********/
 
@@ -458,13 +384,13 @@ always @(posedge clk_sys)
 
 wire core_download = ioctl_download && (ioctl_index==0);
 
-wire [7:0] j1 = ~joy0[7:0];
-wire [7:0] j2 = ~joy1[7:0];
-wire [7:0] p1 = sw[0]; // dsw1
-wire [7:0] p2 = sw[1]; // dsw2
+wire [7:0] j1 = { 2'b11, ~joy0[6], ~joy0[7], ~joy0[0], ~joy0[1], ~joy0[2], ~joy0[3] };
+wire [7:0] j2 = { 2'b11, ~joy1[6], ~joy1[7], ~joy1[0], ~joy1[1], ~joy1[2], ~joy1[3] };
+wire [7:0] p1 = ~sw[0]; // dsw1
+wire [7:0] p2 = ~sw[1]; // dsw2
 
 wire service = 1'b1;
-wire [7:0] system = { 4'b111, service , ~joy0[11], ~joy0[10], ~joy0[9], ~joy0[8] };
+wire [7:0] system = { 3'b111, service , ~joy0[9], ~joy0[5], ~joy0[8], ~joy0[4] };
 
 core u_core(
   .reset          ( reset            ),
@@ -491,7 +417,39 @@ core u_core(
   .color_ready    ( color_ready      ),
   .frame          ( frame            ),
   .vs             ( VSync            ),
-  .sound          ( sound            )
+  .sound          ( sound            ),
+  .vflip          ( status[11]       )
+);
+
+/******** GFX3 (SPRITE ROM) ********/
+
+// moved to SDRAM to save some BRAM for double buffering
+
+wire gfx3_download = ioctl_addr >= 27'h40000 && ioctl_addr < 27'h50000;
+
+wire [24:0] core_sdram_addr;
+wire        core_sdram_rd;
+wire [24:0] sdram_addr = gfx3_download ? ioctl_addr - 27'h40000 : core_sdram_addr;
+wire [15:0] sdram_din  = ioctl_dout;
+wire        sdram_rd   = gfx3_download ? 1'b0 : core_sdram_rd;
+wire        sdram_wr   = gfx3_download ? ioctl_wr : 1'b0;
+wire [15:0] sdram_dout;
+wire        sdram_rdy;
+
+wire [7:0]  core_sdram_dout = sdram_dout[7:0];
+
+sdram sdram
+(
+  .*,
+  .init  ( ~locked    ),
+  .clk   ( clk_ram    ),
+  .addr  ( sdram_addr ),
+  .wtbt  ( 0          ),
+  .dout  ( sdram_dout ),
+  .din   ( sdram_din  ),
+  .rd    ( sdram_rd   ),
+  .we    ( sdram_wr   ),
+  .ready ( sdram_rdy  )
 );
 
 reg  [26:0] act_cnt;

@@ -24,16 +24,16 @@
 	<joystick>8-way</joystick>
 	<special_controls></special_controls>
 	<num_buttons>3</num_buttons>
-	<buttons names="Start 1P, Start 2P, Coin A, Coin B" default="Start,Select,R2,L2"></buttons>
+	<buttons names="Start 1P, Start 2P, A, B, Coin A, Coin B" default="Start,Select,A,B,R2,L2"></buttons>
 
 	<switches default="30,0e">
 
-		<dip bits="0,1" name="Lives" ids="5,4,3,2"/>
+		<dip bits="0,1" name="Lives" ids="2,3,4,5"/>
 		<dip bits="2,3" name="Bonus Life" ids="20k/60k,50k/60k,20k/90k,50k/90k"/>
 		<dip bits="4" name="Demo Sounds" ids="Off,On"/>
 		<dip bits="5" name="Cabinet" ids="Upright,Cocktail"/>
-		<dip bits="6" name="Power Invulnerability" ids="Yes,No"/>
-		<dip bits="7" name="Life Invulnerability" ids="Yes,No"/>
+		<dip bits="6" name="Power Invulnerability" ids="No,Yes"/>
+		<dip bits="7" name="Life Invulnerability" ids="No,Yes"/>
 
 		<dip bits="8,9" name="CoinA" ids="2C/1C,1C/1C,1C/2C,Free Play"/>
 		<dip bits="10,11" name="CoinB" ids="3C/1C,2C/3C,1C/3C,1C/6C"/>

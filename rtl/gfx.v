@@ -149,11 +149,9 @@ always @(posedge clk) begin
       end
 
       if (hh == 255 && vv == 255) begin
-        //frame <= 1'b1;
         px <= 4'd0;
         py <= 4'd0;
         state <= 4'd8;
-        // spr_addr <= 6'h3c;
         spr_addr <= 6'h0;
       end
       else begin
@@ -227,7 +225,7 @@ always @(posedge clk) begin
 
     end
 
-    4'd12: state <= vs ? 8'd0 : 8'd12;
+    4'd12: state <= ~vs ? 8'd0 : 8'd12;
 
   endcase
 end
