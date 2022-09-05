@@ -208,7 +208,7 @@ localparam CONF_STR = {
   "-;",
   "O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
   "OFH,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-  "O5,Orientation,Vert,Horz;",
+  "O5,Orientation,Horz,Vert;",
   "OB,VFlip,Off,On;",
   "-;",
   "DIP;",
@@ -315,18 +315,9 @@ arcade_video #(256,8,0) arcade_video(
   .gamma_bus          ( gamma_bus               )
 );
 
-// assign CE_PIXEL = ce_pix;
-// assign CLK_VIDEO = clk_sys;
-// assign VGA_R[7:5] = vred;
-// assign VGA_G[7:5] = vgreen;
-// assign VGA_B[7:6] = vblue;
-// assign VGA_HS = HSync;
-// assign VGA_VS = VSync;
-// assign VGA_DE = ~(VBlank | HBlank);
-
 wire video_rotated;
 wire rotate_ccw = 1'b1;
-wire no_rotate = status[5] | direct_video;
+wire no_rotate = ~status[5] | direct_video;
 wire flip = 0;
 
 screen_rotate screen_rotate (
@@ -363,7 +354,7 @@ end
 
 always @(posedge clk_sys) begin
   if (color_ready) vram[vram_layer1+vv*256+hh] <= { red, green, blue };
-  if (VGA_DE) { vred, vgreen, vblue } <= vram[vram_layer2+vcount*256+hcount];
+  { vred, vgreen, vblue } <= vram[vram_layer2+vcount*256+hcount];
 end
 
 /******** AUDIO MIX ********/
@@ -417,6 +408,7 @@ core u_core(
   .color_ready    ( color_ready      ),
   .frame          ( frame            ),
   .vs             ( VSync            ),
+  .vb             ( VBlank           ),
   .sound          ( sound            ),
   .vflip          ( status[11]       )
 );

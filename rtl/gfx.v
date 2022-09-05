@@ -49,7 +49,7 @@ module gfx(
   input             h_flip,
   input             v_flip,
 
-  input             vs
+  input             vb
 
 );
 
@@ -200,7 +200,7 @@ always @(posedge clk) begin
 
     4'd11: begin
 
-      if (spr_lut_data[3:0] != 4'd15 && hh < 250 && !tx_priority) begin
+      if (spr_lut_data[3:0] != 4'd15 && !tx_priority && hh < 255) begin
         r <= prom1_data[3:1];
         g <= prom2_data[3:1];
         b <= prom3_data[3:2];
@@ -225,7 +225,7 @@ always @(posedge clk) begin
 
     end
 
-    4'd12: state <= ~vs ? 8'd0 : 8'd12;
+    4'd12: state <= vb ? 8'd0 : 8'd12;
 
   endcase
 end

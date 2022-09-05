@@ -30,6 +30,7 @@ module core(
 
   output [15:0] sound,
   input vs,
+  input vb,
   input vflip
 );
 
@@ -457,7 +458,7 @@ gfx gfx(
   .h_flip       ( vflip          ),
   .v_flip       ( flip           ),
 
-  .vs           ( vs             )
+  .vb           ( vb             )
 
 );
 
