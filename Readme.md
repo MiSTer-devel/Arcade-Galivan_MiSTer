@@ -1,7 +1,7 @@
 # Cosmo Police Galivan for MiSTerFPGA
 
 ## General description
-This core is an emulation of the GV-1412 PCB from Nichibutsu by [Pierco](https://github.com/pcornier). Only Galivan is supported for now.
+This core is an emulation of the GV-1412 PCB from Nichibutsu by [Pierco](https://github.com/pcornier).  Galivan & Dangar are supported.
 
 Use a vertically oriented CRT like the original arcade cabinet for the best gaming experience!
 
