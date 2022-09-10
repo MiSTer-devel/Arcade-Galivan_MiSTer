@@ -1,12 +1,19 @@
 
 module gfx(
   input           clk,
-  output      [7:0] h,
-  output      [7:0] v,
+
+  input       [8:0] hh,
+  input       [8:0] vv,
 
   input      [10:0] scrollx,
   input      [10:0] scrolly,
   input       [2:0] layers,
+
+  // mcpu sprite ram interface
+  input       [7:0] spram_addr,
+  input       [7:0] spram_din,
+  output reg  [7:0] spram_dout,
+  input             spram_wr,
 
   output reg [13:0] bg_map_addr,
   input       [7:0] bg_map_data,
@@ -27,13 +34,8 @@ module gfx(
   input       [3:0] prom2_data,
   input       [3:0] prom3_data,
 
-  output reg  [5:0] spr_addr,
-  input      [31:0] spr_data,
-
   output reg [15:0] spr_gfx_addr,
   input       [7:0] spr_gfx_data,
-  output reg        spr_gfx_read,
-  input             spr_gfx_rdy,
 
   output reg  [7:0] spr_bnk_addr,
   input       [3:0] spr_bnk_data,
@@ -49,186 +51,255 @@ module gfx(
   input             h_flip,
   input             v_flip,
 
-  input             vb
+  input             hb,
+
+  input             bg_on,
+  input             tx_on,
+  input             sp_on
 
 );
 
-reg [3:0] next;
-reg [3:0] state;
+reg [8:0] hh0;
 
-reg  [9:0] hh;
-reg  [7:0] vv;
-wire [15:0] sh = hh + scrollx;
-wire [15:0] sv = vv + scrolly;
+// object RAM
 
-reg prio[256*256-1:0];
+reg [7:0] info[255:0];
+always @(posedge clk) begin
+  spram_dout <= info[spram_addr];
+  if (spram_wr) info[spram_addr] <= spram_din;
+end
 
-assign h = h_flip ? 256 - hh : hh;
-assign v = v_flip ? 256 - vv : vv;
-
-wire [3:0] bg_color_code = bg_tile_data[sh[0]*4+:4];
-wire [3:0] tx_color_code = tx_tile_data[hh[0]*4+:4];
-wire [3:0] sp_color_code = spr_gfx_data[px[0]*4+:4];
-
-wire [7:0] prom_tx_addr = tx_color_code[3] ?
-  { vram2_data[6:5], tx_color_code } :
-  { vram2_data[4:3], tx_color_code };
-
-wire [7:0] prom_bg_addr = bg_color_code[3] ?
-  { bg_attr_data[6:5], bg_color_code } + 8'hc0 :
-  { bg_attr_data[4:3], bg_color_code } + 8'hc0;
-
-wire [7:0] prom_sp_addr = { 2'b10, (spr_lut_data[3] ? spr_bnk_data[3:2] : spr_bnk_data[1:0] ), spr_lut_data[3:0] };
+wire [8:0] vh = v_flip ? 256 - vv : vv;
+wire [8:0] hr = h_flip ? 256 - hh : hh;
 
 
-reg [3:0] px;
-reg [3:0] py;
+// line buffers
 
-reg tx_priority;
+reg [5:0] spbuf[511:0];
+reg [5:0] bgbuf[511:0];
+reg [5:0] txbuf[511:0];
+
+// sprite registers
+
+reg [3:0] sp_next;
+reg [3:0] sp_state;
+reg [7:0] spri;
+
+wire [7:0] attr = info[spri+2];
+wire [8:0] spx  = { attr[0], info[spri+3] }; // range is 0-511 visible area is 128-383
+wire [7:0] spxa = spx[7:0] - 128;
+wire [7:0] spy  = 238 - info[spri];
+wire [7:0] sdy  = spy - vh;
+wire [3:0] sdyf = attr[7] ? sdy[3:0] : 4'd15 - sdy[3:0];
+wire [8:0] code = { attr[1], info[spri+1] };
+reg  [3:0] sdx;
+wire [3:0] sdxf = attr[6] ? 4'd15 - sdx[3:0] : sdx[3:0];
+wire [3:0] sp_color_code = spr_gfx_data[sdx[0]*4+:4];
+
+
+// bg registers
+
+reg [3:0] bg_next;
+reg [3:0] bg_state;
+reg [7:0] bgx;
+
+reg  [10:0] scx_reg;
+reg  [10:0] scy_reg;
+wire [10:0] sh = bgx + scx_reg;
+wire [10:0] sv = vh + scy_reg;
+wire [3:0]  bg_color_code = bg_tile_data[sh[0]*4+:4];
+
+// txt register
+
+reg  [3:0] tx_next;
+reg  [3:0] tx_state;
+reg  [7:0] txx;
+wire [3:0] tx_color_code = tx_tile_data[txx[0]*4+:4];
+
+reg        color_ok;
+reg  [3:0] rstate;
+reg  [3:0] rnext;
+reg  [5:0] bg, tx, sp;
 
 always @(posedge clk) begin
 
-  case (state)
+  hh0 <= hh;
+
+  if (vv == 0) begin
+    scx_reg <= scrollx;
+    scy_reg <= scrolly;
+  end
+
+  case (sp_state)
 
     4'd0: begin
-
-      frame <= 1'b0;
-
-      bg_map_addr <= sv[15:4] * 128 + sh[15:4];
-
-      // tx
-      vram_addr <= hh[7:3] * 32 + vv[7:3];
-
-      prio[vv*256+hh] <= 1'b0;
-
-      done <= 1'b0;
-      next <= 4'd1;
-      state <= 4'd7;
-
+      spri <= 8'd0;
+      sp_state <= hh == 0 && vh < 240 ? 1'b1 : 1'b0;
     end
 
     4'd1: begin
+      if (vh > spy && vh <= spy+16) begin
+        sp_state <= 4'd2;
+        sdx <= 4'd0;
+      end
+      else begin
+        spri <= spri + 8'd4;
+        if (spri == 8'd252) sp_state <= 4'd0;
+      end
+    end
 
+    4'd2: begin
+      spr_gfx_addr <= { sdx[1], code, sdyf[3:0], sdx[3:2] };
+      spr_bnk_addr <= code[8:2];
+      sp_state <= 4'd14;
+      sp_next <= 4'd3;
+    end
+
+    4'd3: begin
+      spr_lut_addr <= { spr_bnk_data, sp_color_code };
+      sp_state <= 4'd14;
+      sp_next <= 4'd4;
+    end
+
+    4'd4: begin
+      if (spx+sdxf > 128 && spx+sdxf < 256+128 && spr_lut_data != 4'hf) spbuf[{ vh[0], spxa+sdxf }] <= { (spr_lut_data[3] ? spr_bnk_data[3:2] : spr_bnk_data[1:0]), sp_color_code };
+
+      sdx <= sdx + 4'd1;
+      sp_state <= 4'd2;
+      if (sdx == 4'd15) begin
+        spri <= spri + 8'd4;
+        sp_state <= spri == 8'd252 ? 4'd0 : 4'd1;
+      end
+    end
+
+    4'd14: sp_state <= 4'd15;
+    4'd15: sp_state <= sp_next;
+
+  endcase
+
+
+  case (bg_state)
+
+    4'd0: begin
+      bg_state <= hh == 0 && hh < 240 ? 1'b1 : 1'b0;
+      bgx <= 0;
+    end
+
+    4'd1: begin
+      bg_map_addr <= sv[10:4] * 128 + sh[10:4];
+      bg_state <= 4'd14;
+      bg_next <= 4'd2;
+    end
+
+    4'd2: begin
       bg_tile_addr <= { bg_attr_data[1:0], bg_map_data } * 128 + sv[3:0] * 8 + sh[3:1];
+      bg_state <= 4'd14;
+      bg_next <= 4'd3;
+    end
 
-      tx_tile_addr <= { vram2_data[0], vram1_data } * 32 + vv[2:0] * 4 + hh[2:1];
+    4'd3: begin
+      bgbuf[{ vh[0], bgx }] <= { (bg_color_code[3] ? bg_attr_data[6:5] : bg_attr_data[4:3]), bg_color_code };
+      bgx <= bgx + 8'd1;
+      bg_state <= bgx == 255 ? 4'd0 : 4'd1;
+    end
 
-      next <= 4'd2;
-      state <= 4'd7;
+    4'd14: bg_state <= 4'd15;
+    4'd15: bg_state <= bg_next;
 
+  endcase
+
+
+  case (tx_state)
+
+    4'd0: begin
+      tx_state <= hh == 0 && vh < 256 ? 1'b1 : 1'b0;
+      txx <= 0;
+    end
+
+    4'd1: begin
+      vram_addr <= txx[7:3] * 32 + vh[7:3];
+      tx_state <= 4'd14;
+      tx_next <= 4'd2;
+    end
+
+    4'd2: begin
+      tx_tile_addr <= { vram2_data[0], vram1_data } * 32 + vh[2:0] * 4 + txx[2:1];
+      tx_state <= 4'd14;
+      tx_next <= 4'd3;
+    end
+
+    4'd3: begin
+      txbuf[{ vh[0], txx }] <= { (tx_color_code[3] ? vram2_data[6:5] : vram2_data[4:3]), tx_color_code };
+      txx <= txx + 8'd1;
+      tx_state <= txx == 255 ? 4'd0 : 4'd1;
+    end
+
+    4'd14: tx_state <= 4'd15;
+    4'd15: tx_state <= tx_next;
+
+  endcase
+
+  case (rstate)
+
+    4'd0: rstate <= hh0 ^ hh && hh < 256 ? 2'd1 : 2'd0;
+
+    4'd1: begin
+      bg <= bgbuf[{ ~vh[0], hr[7:0] }];
+      tx <= txbuf[{ ~vh[0], hr[7:0] }];
+      sp <= spbuf[{ ~vh[0], hr[7:0] }];
+      rstate <= 4'd14;
+      rnext <= 4'd2;
     end
 
     4'd2: begin
 
-      if (~layers[2] && prom_tx_addr[3:0] != 4'hf) begin
-        prom_addr <= prom_tx_addr;
-        if (~layers[0]) prio[vv*256+hh] <= 1'b1;
-      end
-      else if (~layers[1]) begin
-        prom_addr <= prom_bg_addr;
-      end
-      else begin
-        prom_addr <= 10'd0;
+      color_ok <= 1'b0;
+
+      if (~layers[1] && bg_on) begin
+        prom_addr <= { 2'b11, bg };
+        color_ok <= 1'b1;
       end
 
-      next <= 4'd3;
-      state <= 4'd7;
+      if (sp[3:0] != 4'hf && sp_on) begin
+        prom_addr <= { 2'b10, sp };
+        color_ok <= 1'b1;
+      end
 
+      if (~layers[2] && tx[3:0] != 4'hf && tx_on) begin
+        prom_addr <= { 2'b00, tx };
+        color_ok <= 1'b1;
+      end
+
+      if (sp[3:0] != 4'hf && layers[0] && sp_on) begin
+        prom_addr <= { 2'b10, sp };
+        color_ok <= 1'b1;
+      end
+
+      rstate <= 4'd14;
+      rnext <= 4'd3;
     end
 
     4'd3: begin
-      r <= prom1_data[3:1];
-      g <= prom2_data[3:1];
-      b <= prom3_data[3:2];
-      done <= 1'b1;
-      hh <= hh + 9'd1;
-
-      if (hh == 255) begin
-        vv <= vv + 9'd1;
-        hh <= 9'd0;
-      end
-
-      if (hh == 255 && vv == 255) begin
-        px <= 4'd0;
-        py <= 4'd0;
-        state <= 4'd8;
-        spr_addr <= 6'h0;
-      end
-      else begin
-        state <= 4'd0;
-      end
-    end
-
-    4'd5: state <= spr_gfx_rdy ? next : 4'd5;
-    4'd6: state <= next;
-    4'd7: state <= 4'd6;
-
-    4'd8: begin
-
-      hh <= { spr_data[16], spr_data[31:24] } + (spr_data[22] ? 4'd15-px : px) - 128;
-      vv <= 240 - spr_data[7:0] + (spr_data[23] ? 4'd15-py : py);
-
-      spr_gfx_addr <= { px[1], spr_data[17], spr_data[15:8], py[3:0], px[3:2] };
-      spr_bnk_addr <= { spr_data[17], spr_data[15:10] };
-      spr_gfx_read <= 1'b1;
-      done <= 1'b0;
-
-      next <= 4'd9;
-      state <= 4'd5;
-
-    end
-
-    4'd9: begin
-
-      spr_lut_addr <= { spr_bnk_data[3:0], sp_color_code };
-      spr_gfx_read <= 1'b0;
-
-      next <= 4'd10;
-      state <= 4'd7;
-
-    end
-
-    4'd10: begin
-
-      prom_addr <= prom_sp_addr;
-      tx_priority <= prio[vv*256+hh];
-
-      next <= 4'd11;
-      state <= 4'd7;
-
-    end
-
-    4'd11: begin
-
-      if (spr_lut_data[3:0] != 4'd15 && !tx_priority && hh < 255) begin
+      if (color_ok) begin
         r <= prom1_data[3:1];
         g <= prom2_data[3:1];
         b <= prom3_data[3:2];
-        done <= 1'b1;
+      end
+      else begin
+        { r, g, b } <= 8'd0;
       end
 
-
-      state <= 4'd8;
-      px <= px + 4'd1;
-      if (px == 4'd15) py <= py + 4'd1;
-      if (px == 4'd15 && py == 4'd15) begin
-        spr_addr <= spr_addr + 1;
-        next <= 4'd8;
-        state <= 4'd7;
-        if (spr_addr == 6'h3c) begin
-          state <= 4'd12;
-          vv <= 8'd0;
-          hh <= 8'd0;
-          frame <= 1'b1;
-        end
-      end
-
+      bgbuf[{ ~vh[0], hr[7:0] }] <= 6'hff;
+      spbuf[{ ~vh[0], hr[7:0] }] <= 6'hff;
+      txbuf[{ ~vh[0], hr[7:0] }] <= 6'hff;
+      rstate <= 4'd0;
     end
 
-    4'd12: state <= vb ? 8'd0 : 8'd12;
+    4'd14: rstate <= 4'd15;
+    4'd15: rstate <= rnext;
 
   endcase
+
 end
 
 endmodule
-

@@ -15,23 +15,24 @@ module core(
   input [15:0] ioctl_dout,
   input        ioctl_wr,
 
-  input  [7:0]  sdram_data,
-  output [24:0] sdram_addr,
-  output        sdram_rd,
-  input         sdram_rdy,
 
-  output [7:0] hh,
-  output [7:0] vv,
   output [2:0] red,
   output [2:0] green,
   output [1:0] blue,
-  output       color_ready,
   output       frame,
 
   output [15:0] sound,
+
+  input [8:0] hh,
+  input [8:0] vv,
   input vs,
-  input vb,
-  input vflip
+  input hb,
+  input vflip,
+
+  input bg_on,
+  input tx_on,
+  input sp_on
+
 );
 
 
@@ -183,16 +184,7 @@ dpram #(10,8) mcpu_vram2(
 );
 
 // 0xe000-0xe0ff
-spram mcpu_spr_ram(
-  .clock     ( clk_sys                  ),
-  .address_a ( mcpu_addr[7:0]           ),
-  .data_a    ( mcpu_dout                ),
-  .q_a       ( mcpu_spr_q               ),
-  .wren_a    ( ~mcpu_wr_n & mcpu_spr_en ),
-  .rden_a    ( 1'b1                     ),
-  .address_b ( gfx_spr_addr             ),
-  .q_b       ( mcpu_spr_qb              )
-);
+// SPRAM is managed by the GFX module
 
 // 0xe100-0xffff
 dpram #(13,8) mcpu_ram(
@@ -414,51 +406,55 @@ wire [1:0] b;
 
 gfx gfx(
 
-  .clk          ( clk_sys        ),
-  .h            ( hh             ),
-  .v            ( vv             ),
+  .clk          ( clk_sys                  ),
+  .hh           ( hh                       ),
+  .vv           ( vv                       ),
 
-  .scrollx      ( scrollx        ),
-  .scrolly      ( scrolly        ),
-  .layers       ( layers         ),
+  .scrollx      ( scrollx                  ),
+  .scrolly      ( scrolly                  ),
+  .layers       ( layers                   ),
 
-  .bg_map_addr  ( gfx4_addr      ),
-  .bg_map_data  ( gfx_rom41_q    ),
-  .bg_attr_data ( gfx_rom42_q    ),
-  .bg_tile_addr ( gfx2_addr      ),
-  .bg_tile_data ( gfx_rom2_q     ),
+  .spram_addr   ( mcpu_addr[7:0]           ),
+  .spram_din    ( mcpu_dout                ),
+  .spram_dout   ( mcpu_spr_q               ),
+  .spram_wr     ( ~mcpu_wr_n & mcpu_spr_en ),
 
-  .vram_addr    ( gfx_vram_addr  ),
-  .vram1_data   ( mcpu_vram1_q   ),
-  .vram2_data   ( mcpu_vram2_q   ),
-  .tx_tile_addr ( gfx1_addr      ),
-  .tx_tile_data ( gfx_rom1_q     ),
+  .bg_map_addr  ( gfx4_addr                ),
+  .bg_map_data  ( gfx_rom41_q              ),
+  .bg_attr_data ( gfx_rom42_q              ),
+  .bg_tile_addr ( gfx2_addr                ),
+  .bg_tile_data ( gfx_rom2_q               ),
 
-  .spr_addr     ( gfx_spr_addr   ),
-  .spr_data     ( mcpu_spr_qb    ),
-  .spr_gfx_addr ( sdram_addr     ),
-  .spr_gfx_data ( sdram_data     ),
-  .spr_gfx_read ( sdram_rd       ),
-  .spr_gfx_rdy  ( sdram_rdy      ),
-  .spr_bnk_addr ( gfx_sprom_addr ),
-  .spr_bnk_data ( sprom_q        ),
-  .spr_lut_addr ( gfx_prom4_addr ),
-  .spr_lut_data ( prom4_q        ),
+  .vram_addr    ( gfx_vram_addr            ),
+  .vram1_data   ( mcpu_vram1_q             ),
+  .vram2_data   ( mcpu_vram2_q             ),
+  .tx_tile_addr ( gfx1_addr                ),
+  .tx_tile_data ( gfx_rom1_q               ),
 
-  .prom_addr    ( gfx_prom_addr  ),
-  .prom1_data   ( prom1_q        ),
-  .prom2_data   ( prom2_q        ),
-  .prom3_data   ( prom3_q        ),
 
-  .r            ( red            ),
-  .g            ( green          ),
-  .b            ( blue           ),
-  .done         ( color_ready    ),
-  .frame        ( frame          ),
-  .h_flip       ( vflip          ),
-  .v_flip       ( flip           ),
+  .spr_gfx_addr ( gfx3_addr                ),
+  .spr_gfx_data ( gfx_rom3_q               ),
+  .spr_bnk_addr ( gfx_sprom_addr           ),
+  .spr_bnk_data ( sprom_q                  ),
+  .spr_lut_addr ( gfx_prom4_addr           ),
+  .spr_lut_data ( prom4_q                  ),
 
-  .vb           ( vb             )
+  .prom_addr    ( gfx_prom_addr            ),
+  .prom1_data   ( prom1_q                  ),
+  .prom2_data   ( prom2_q                  ),
+  .prom3_data   ( prom3_q                  ),
+
+  .r            ( red                      ),
+  .g            ( green                    ),
+  .b            ( blue                     ),
+  .h_flip       ( vflip                    ),
+  .v_flip       ( flip                     ),
+
+  .hb           ( hb                       ),
+
+  .bg_on        ( bg_on                    ),
+  .tx_on        ( tx_on                    ),
+  .sp_on        ( sp_on                    )
 
 );
 
@@ -469,6 +465,9 @@ wire [13:0] gfx_rom1_addr    = ioctl_download ? ioctl_addr - 27'h1c000 : gfx1_ad
 wire        gfx_rom1_wren_a  = ioctl_download && ioctl_addr >= 27'h1c000 && ioctl_addr < 27'h20000 ? ioctl_wr : 1'b0;
 wire [16:0] gfx_rom2_addr    = ioctl_download ? ioctl_addr - 27'h20000 : gfx2_addr;
 wire        gfx_rom2_wren_a  = ioctl_download && ioctl_addr >= 27'h20000 && ioctl_addr < 27'h40000 ? ioctl_wr : 1'b0;
+wire [15:0] gfx_rom3_addr    = ioctl_download ? ioctl_addr - 27'h40000 : gfx3_addr;
+wire        gfx_rom3_wren_a  = ioctl_download && ioctl_addr >= 27'h40000 && ioctl_addr < 27'h50000 ? ioctl_wr : 1'b0;
+
 wire [13:0] gfx_rom41_addr   = ioctl_download ? ioctl_addr - 27'h50000 : gfx4_addr;
 wire        gfx_rom41_wren_a = ioctl_download && ioctl_addr >= 27'h50000 && ioctl_addr < 27'h54000 ? ioctl_wr : 1'b0;
 wire [13:0] gfx_rom42_addr   = ioctl_download ? ioctl_addr - 27'h54000 : gfx4_addr;
@@ -493,15 +492,14 @@ dpram #(17,8) gfx_rom2(
   .wren_a    ( gfx_rom2_wren_a )
 );
 
-// gfx3 (sprites) moved to SDRAM
-// dpram #(16,8) gfx_rom3(
-//   .clock     ( clk_sys         ),
-//   .address_a ( gfx_rom3_addr   ),
-//   .data_a    ( gfx_rom_data    ),
-//   .q_a       ( gfx_rom3_q      ),
-//   .rden_a    ( 1'b1            ),
-//   .wren_a    ( gfx_rom3_wren_a )
-// );
+dpram #(16,8) gfx_rom3(
+  .clock     ( clk_sys         ),
+  .address_a ( gfx_rom3_addr   ),
+  .data_a    ( gfx_rom_data    ),
+  .q_a       ( gfx_rom3_q      ),
+  .rden_a    ( 1'b1            ),
+  .wren_a    ( gfx_rom3_wren_a )
+);
 
 dpram #(14,8) gfx_rom41(
   .clock     ( clk_sys         ),

@@ -177,7 +177,7 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-// assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
+assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 // assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 // assign VGA_SL = 0;
@@ -199,8 +199,8 @@ assign BUTTONS = 0;
 
 wire [1:0] ar = status[122:121];
 
-assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
+assign VIDEO_ARX = (!ar) ? ((no_rotate) ? 8'd8 : 8'd7) : (ar - 1'd1);
+assign VIDEO_ARY = (!ar) ? ((no_rotate) ? 8'd7 : 8'd8) : 12'd0;
 
 `include "build_id.v"
 localparam CONF_STR = {
@@ -210,6 +210,14 @@ localparam CONF_STR = {
   "OFH,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
   "O5,Orientation,Horz,Vert;",
   "OB,VFlip,Off,On;",
+  "-;",
+	"P1,Debug Options;",
+  "P1-;",
+	"P1-, -= Layers =-;",
+	"P1-;",
+  "P1OI,BG Layer,On,Off;",
+  "P1OJ,Text Layer,On,Off;",
+  "P1OK,Sprite Layer,On,Off;",
   "-;",
   "DIP;",
   "-;",
@@ -238,41 +246,40 @@ wire [21:0] gamma_bus;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
-  .clk_sys(clk_sys),
-  .HPS_BUS(HPS_BUS),
-  .EXT_BUS(),
-  .gamma_bus(gamma_bus),
-  .direct_video(direct_video),
+  .clk_sys            ( clk_sys            ),
+  .HPS_BUS            ( HPS_BUS            ),
+  .EXT_BUS            (                    ),
+  .gamma_bus          ( gamma_bus          ),
+  .direct_video       ( direct_video       ),
 
-  .forced_scandoubler(forced_scandoubler),
+  .forced_scandoubler ( forced_scandoubler ),
 
-  .buttons(buttons),
-  .status(status),
-  .status_menumask({direct_video}),
+  .buttons            ( buttons            ),
+  .status             ( status             ),
+  .status_menumask    ( { direct_video }   ),
 
-  .ioctl_download(ioctl_download),
-  .ioctl_wr(ioctl_wr),
-  .ioctl_addr(ioctl_addr),
-  .ioctl_dout(ioctl_dout),
-  .ioctl_wait(ioctl_wait),
-  .ioctl_index(ioctl_index),
+  .ioctl_download     ( ioctl_download     ),
+  .ioctl_wr           ( ioctl_wr           ),
+  .ioctl_addr         ( ioctl_addr         ),
+  .ioctl_dout         ( ioctl_dout         ),
+  .ioctl_wait         ( ioctl_wait         ),
+  .ioctl_index        ( ioctl_index        ),
 
-  .joystick_0(joy0),
-  .joystick_1(joy1),
-  .ps2_key(ps2_key)
+  .joystick_0         ( joy0               ),
+  .joystick_1         ( joy1               ),
+  .ps2_key            ( ps2_key            )
 );
 
 /******** CLOCKS ********/
 
 wire locked;
-wire clk_sys, clk_ram;
+wire clk_sys;
 pll pll
 (
-  .refclk(CLK_50M),
-  .rst(0),
-  .outclk_0(clk_sys),
-  .outclk_1(clk_ram),
-  .locked(locked)
+  .refclk   ( CLK_50M ),
+  .rst      ( 0       ),
+  .outclk_0 ( clk_sys ),
+  .locked   ( locked  )
 );
 
 wire reset = RESET | status[0] | buttons[1];
@@ -284,6 +291,8 @@ wire HSync;
 wire VBlank;
 wire VSync;
 wire [8:0] hcount, vcount;
+reg  [2:0] vred, vgreen;
+reg  [1:0] vblue;
 
 wire clk_vid;
 clk_en #(8) clk_en_main(clk_sys, clk_vid);
@@ -328,35 +337,6 @@ screen_rotate screen_rotate (
   .video_rotated ( video_rotated )
 );
 
-/******** VRAM FRAME BUFFERS ********/
-
-wire [7:0] hh, vv;
-wire [2:0] red, green;
-wire [1:0] blue;
-reg  [2:0] vred, vgreen;
-reg  [1:0] vblue;
-
-wire color_ready, frame;
-
-reg [7:0] vram[256*256*2-1:0];
-reg [16:0] vram_layer1, vram_layer2;
-
-always @(posedge frame) begin
-  if (vram_layer1 == 17'd0) begin
-    vram_layer1 <= 256*256;
-    vram_layer2 <= 0;
-  end
-  else begin
-    vram_layer1 <= 0;
-    vram_layer2 <= 256*256;
-  end
-end
-
-always @(posedge clk_sys) begin
-  if (color_ready) vram[vram_layer1+vv*256+hh] <= { red, green, blue };
-  { vred, vgreen, vblue } <= vram[vram_layer2+vcount*256+hcount];
-end
-
 /******** AUDIO MIX ********/
 
 wire [15:0] sound;
@@ -375,8 +355,8 @@ always @(posedge clk_sys)
 
 wire core_download = ioctl_download && (ioctl_index==0);
 
-wire [7:0] j1 = { 2'b11, ~joy0[6], ~joy0[7], ~joy0[0], ~joy0[1], ~joy0[2], ~joy0[3] };
-wire [7:0] j2 = { 2'b11, ~joy1[6], ~joy1[7], ~joy1[0], ~joy1[1], ~joy1[2], ~joy1[3] };
+wire [7:0] j1 = { ~joy0[5], 1'b1, ~joy0[6], ~joy0[7], ~joy0[0], ~joy0[1], ~joy0[2], ~joy0[3] };
+wire [7:0] j2 = { ~joy1[5], 1'b1, ~joy1[6], ~joy1[7], ~joy1[0], ~joy1[1], ~joy1[2], ~joy1[3] };
 wire [7:0] p1 = ~sw[0]; // dsw1
 wire [7:0] p2 = ~sw[1]; // dsw2
 
@@ -396,52 +376,19 @@ core u_core(
   .ioctl_addr     ( ioctl_addr       ),
   .ioctl_dout     ( ioctl_dout       ),
   .ioctl_wr       ( ioctl_wr         ),
-  .sdram_data     ( core_sdram_dout  ),
-  .sdram_addr     ( core_sdram_addr  ),
-  .sdram_rd       ( core_sdram_rd    ),
-  .sdram_rdy      ( sdram_rdy        ),
-  .hh             ( hh               ),
-  .vv             ( vv               ),
-  .red            ( red              ),
-  .green          ( green            ),
-  .blue           ( blue             ),
-  .color_ready    ( color_ready      ),
+  .hh             ( hcount           ),
+  .vv             ( vcount           ),
+  .red            ( vred             ),
+  .green          ( vgreen           ),
+  .blue           ( vblue            ),
   .frame          ( frame            ),
   .vs             ( VSync            ),
-  .vb             ( VBlank           ),
+  .hb             ( HBlank           ),
   .sound          ( sound            ),
-  .vflip          ( status[11]       )
-);
-
-/******** GFX3 (SPRITE ROM) ********/
-
-// moved to SDRAM to save some BRAM for double buffering
-
-wire gfx3_download = ioctl_addr >= 27'h40000 && ioctl_addr < 27'h50000;
-
-wire [24:0] core_sdram_addr;
-wire        core_sdram_rd;
-wire [24:0] sdram_addr = gfx3_download ? ioctl_addr - 27'h40000 : core_sdram_addr;
-wire [15:0] sdram_din  = ioctl_dout;
-wire        sdram_rd   = gfx3_download ? 1'b0 : core_sdram_rd;
-wire        sdram_wr   = gfx3_download ? ioctl_wr : 1'b0;
-wire [15:0] sdram_dout;
-wire        sdram_rdy;
-
-wire [7:0]  core_sdram_dout = sdram_dout[7:0];
-
-sdram sdram
-(
-  .*,
-  .init  ( ~locked    ),
-  .clk   ( clk_ram    ),
-  .addr  ( sdram_addr ),
-  .wtbt  ( 0          ),
-  .dout  ( sdram_dout ),
-  .din   ( sdram_din  ),
-  .rd    ( sdram_rd   ),
-  .we    ( sdram_wr   ),
-  .ready ( sdram_rdy  )
+  .vflip          ( status[11]       ),
+  .bg_on          ( ~status[18]      ),
+  .tx_on          ( ~status[19]      ),
+  .sp_on          ( ~status[20]      )
 );
 
 reg  [26:0] act_cnt;
