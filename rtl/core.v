@@ -27,11 +27,13 @@ module core(
   input [8:0] vv,
   input vs,
   input hb,
-  input vflip,
+  input hflip,
 
   input bg_on,
   input tx_on,
-  input sp_on
+  input sp_on,
+
+  input [1:0] fdiv
 
 );
 
@@ -39,9 +41,9 @@ module core(
 /******** CLOCKS ********/
 
 wire clk_en_4, clk_en_6, acpu_irq_en;
-clk_en #(7)  mcpu_clk_en(clk_sys, clk_en_6);
-clk_en #(11) acpu_clk_en(clk_sys, clk_en_4);
-clk_en #(6100) acpu_irq_cen(clk_sys, acpu_irq_en);
+clk_en mcpu_clk_en(clk_sys, clk_en_6, 16'd7, fdiv);
+clk_en acpu_clk_en(clk_sys, clk_en_4, 16'd11);
+clk_en acpu_irq_cen(clk_sys, acpu_irq_en, 16'd6400);
 
 /******** MCPU ********/
 
@@ -447,8 +449,8 @@ gfx gfx(
   .r            ( red                      ),
   .g            ( green                    ),
   .b            ( blue                     ),
-  .h_flip       ( vflip                    ),
-  .v_flip       ( flip                     ),
+  .h_flip       ( flip                     ),
+  .v_flip       ( hflip                    ),
 
   .hb           ( hb                       ),
 

@@ -30,7 +30,7 @@
 
 		<dip bits="0,1" name="Lives" ids="2,3,4,5"/>
 		<dip bits="2,3" name="Bonus Life" ids="20k/60k,50k/60k,20k/90k,50k/90k"/>
-		<dip bits="4" name="Demo Sounds" ids="Off,On"/>
+		<dip bits="4" name="Demo Sounds" ids="On,Off"/>
 		<dip bits="5" name="Cabinet" ids="Upright,Cocktail"/>
 		<dip bits="6" name="Power Invulnerability" ids="No,Yes"/>
 		<dip bits="7" name="Life Invulnerability" ids="No,Yes"/>

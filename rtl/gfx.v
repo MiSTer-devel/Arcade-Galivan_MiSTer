@@ -64,6 +64,8 @@ reg [8:0] hh0;
 // object RAM
 
 reg [7:0] info[255:0];
+reg [7:0] smap[255:0];
+
 always @(posedge clk) begin
   spram_dout <= info[spram_addr];
   if (spram_wr) info[spram_addr] <= spram_din;
@@ -85,13 +87,13 @@ reg [3:0] sp_next;
 reg [3:0] sp_state;
 reg [7:0] spri;
 
-wire [7:0] attr = info[spri+2];
-wire [8:0] spx  = { attr[0], info[spri+3] }; // range is 0-511 visible area is 128-383
+wire [7:0] attr = smap[spri+2];
+wire [8:0] spx  = { attr[0], smap[spri+3] }; // range is 0-511 visible area is 128-383
 wire [7:0] spxa = spx[7:0] - 128;
-wire [7:0] spy  = 238 - info[spri];
+wire [7:0] spy  = 239 - smap[spri];
 wire [7:0] sdy  = spy - vh;
 wire [3:0] sdyf = attr[7] ? sdy[3:0] : 4'd15 - sdy[3:0];
-wire [8:0] code = { attr[1], info[spri+1] };
+wire [8:0] code = { attr[1], smap[spri+1] };
 reg  [3:0] sdx;
 wire [3:0] sdxf = attr[6] ? 4'd15 - sdx[3:0] : sdx[3:0];
 wire [3:0] sp_color_code = spr_gfx_data[sdx[0]*4+:4];
@@ -121,20 +123,31 @@ reg  [3:0] rstate;
 reg  [3:0] rnext;
 reg  [5:0] bg, tx, sp;
 
+reg [7:0] clr_addr;
+reg [7:0] smap_addr;
+reg copied;
+
 always @(posedge clk) begin
 
   hh0 <= hh;
 
-  if (vv == 0) begin
+  if (vv == 0 && hh == 0) begin
     scx_reg <= scrollx;
     scy_reg <= scrolly;
+    copied = 1'b0;
+  end
+
+  if (vv > 250 && ~copied) begin
+    smap[smap_addr] <= info[smap_addr];
+    smap_addr <= smap_addr + 8'd1;
+    if (smap_addr == 8'd255) copied <= 1'b1;
   end
 
   case (sp_state)
 
     4'd0: begin
       spri <= 8'd0;
-      sp_state <= hh == 0 && vh < 240 ? 1'b1 : 1'b0;
+      sp_state <= hh == 0 && vh < 240 && sp_on ? 1'b1 : 1'b0;
     end
 
     4'd1: begin
@@ -162,7 +175,9 @@ always @(posedge clk) begin
     end
 
     4'd4: begin
-      if (spx+sdxf > 128 && spx+sdxf < 256+128 && spr_lut_data != 4'hf) spbuf[{ vh[0], spxa+sdxf }] <= { (spr_lut_data[3] ? spr_bnk_data[3:2] : spr_bnk_data[1:0]), sp_color_code };
+      if (spx+sdxf > 128 && spx+sdxf < 256+128 && spr_lut_data != 4'hf) begin
+        spbuf[{ vh[0], spxa+sdxf }] <= { (spr_lut_data[3] ? spr_bnk_data[3:2] : spr_bnk_data[1:0]), sp_color_code };
+      end
 
       sdx <= sdx + 4'd1;
       sp_state <= 4'd2;
@@ -181,7 +196,7 @@ always @(posedge clk) begin
   case (bg_state)
 
     4'd0: begin
-      bg_state <= hh == 0 && hh < 240 ? 1'b1 : 1'b0;
+      bg_state <= hh == 0 && hh < 240 && bg_on ? 1'b1 : 1'b0;
       bgx <= 0;
     end
 
@@ -212,7 +227,7 @@ always @(posedge clk) begin
   case (tx_state)
 
     4'd0: begin
-      tx_state <= hh == 0 && vh < 256 ? 1'b1 : 1'b0;
+      tx_state <= hh == 0 && vh < 256 && tx_on ? 1'b1 : 1'b0;
       txx <= 0;
     end
 
@@ -241,7 +256,16 @@ always @(posedge clk) begin
 
   case (rstate)
 
-    4'd0: rstate <= hh0 ^ hh && hh < 256 ? 2'd1 : 2'd0;
+    4'd0: begin
+      rstate <= hh0 ^ hh && hh < 256 ? 2'd1 : 2'd0;
+      if (hh >= 256) begin
+        spbuf[{ ~vh[0], clr_addr }] <= 6'h3f;
+        txbuf[{ ~vh[0], clr_addr }] <= 6'h3f;
+        bgbuf[{ ~vh[0], clr_addr }] <= 6'h3f;
+        clr_addr <= clr_addr + 8'd1;
+      end
+    end
+
 
     4'd1: begin
       bg <= bgbuf[{ ~vh[0], hr[7:0] }];
@@ -255,25 +279,29 @@ always @(posedge clk) begin
 
       color_ok <= 1'b0;
 
-      if (~layers[1] && bg_on) begin
+      if (~layers[1]) begin
         prom_addr <= { 2'b11, bg };
         color_ok <= 1'b1;
       end
 
-      if (sp[3:0] != 4'hf && sp_on) begin
+      if (sp[3:0] != 4'hf) begin
         prom_addr <= { 2'b10, sp };
         color_ok <= 1'b1;
       end
 
-      if (~layers[2] && tx[3:0] != 4'hf && tx_on) begin
+      if (~layers[2] && tx[3:0] != 4'hf) begin
         prom_addr <= { 2'b00, tx };
         color_ok <= 1'b1;
       end
 
-      if (sp[3:0] != 4'hf && layers[0] && sp_on) begin
+      if (layers[0] && sp[3:0] != 4'hf) begin
         prom_addr <= { 2'b10, sp };
         color_ok <= 1'b1;
       end
+
+      // bgbuf[{ ~vh[0], hr[7:0] }] <= 6'h3f;
+      // spbuf[{ ~vh[0], hr[7:0] }] <= 6'h3f;
+      // txbuf[{ ~vh[0], hr[7:0] }] <= 6'h3f;
 
       rstate <= 4'd14;
       rnext <= 4'd3;
@@ -288,10 +316,6 @@ always @(posedge clk) begin
       else begin
         { r, g, b } <= 8'd0;
       end
-
-      bgbuf[{ ~vh[0], hr[7:0] }] <= 6'hff;
-      spbuf[{ ~vh[0], hr[7:0] }] <= 6'hff;
-      txbuf[{ ~vh[0], hr[7:0] }] <= 6'hff;
       rstate <= 4'd0;
     end
 

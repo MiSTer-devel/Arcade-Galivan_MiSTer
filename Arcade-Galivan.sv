@@ -208,16 +208,17 @@ localparam CONF_STR = {
   "-;",
   "O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
   "OFH,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-  "O5,Orientation,Horz,Vert;",
-  "OB,VFlip,Off,On;",
+  "O5,Orientation,Vert,Horz;",
+  "OB,HFlip,Off,On;",
   "-;",
 	"P1,Debug Options;",
   "P1-;",
-	"P1-, -= Layers =-;",
+	"P1-, -= Debug Options =-;",
 	"P1-;",
   "P1OI,BG Layer,On,Off;",
   "P1OJ,Text Layer,On,Off;",
   "P1OK,Sprite Layer,On,Off;",
+  "P1O[2:1],FDiv,1/1,1/2,1/3,0;",
   "-;",
   "DIP;",
   "-;",
@@ -295,7 +296,7 @@ reg  [2:0] vred, vgreen;
 reg  [1:0] vblue;
 
 wire clk_vid;
-clk_en #(8) clk_en_main(clk_sys, clk_vid);
+clk_en clk_en_main(clk_sys, clk_vid, 16'd8);
 
 wire  ce_pix = clk_vid;
 wire [2:0] fx = status[17:15];
@@ -326,7 +327,7 @@ arcade_video #(256,8,0) arcade_video(
 
 wire video_rotated;
 wire rotate_ccw = 1'b1;
-wire no_rotate = ~status[5] | direct_video;
+wire no_rotate = status[5] | direct_video;
 wire flip = 0;
 
 screen_rotate screen_rotate (
@@ -385,10 +386,11 @@ core u_core(
   .vs             ( VSync            ),
   .hb             ( HBlank           ),
   .sound          ( sound            ),
-  .vflip          ( status[11]       ),
+  .hflip          ( status[11]       ),
   .bg_on          ( ~status[18]      ),
   .tx_on          ( ~status[19]      ),
-  .sp_on          ( ~status[20]      )
+  .sp_on          ( ~status[20]      ),
+  .fdiv           ( status[2:1]      )
 );
 
 reg  [26:0] act_cnt;

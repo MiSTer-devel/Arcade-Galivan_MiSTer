@@ -30,15 +30,16 @@
 
 		<dip bits="0,1" name="Lives" ids="2,3,4,5"/>
 		<dip bits="2,3" name="Bonus Life" ids="20k/60k,50k/60k,20k/90k,50k/90k"/>
-		<dip bits="4" name="Demo Sounds" ids="Off,On"/>
-		<dip bits="5" name="Cabinet" ids="Upright,Cocktail"/>
+		<dip bits="4" name="Demo Sounds" ids="On,Off"/>
+		<dip bits="5" name="Cabinet" ids="Cocktail,Upright"/>
 		<dip bits="6" name="Power Invulnerability" ids="No,Yes"/>
-		<dip bits="7" name="Life Invulnerability" ids="No,Yes"/>
+		<dip bits="7" name="Alternate Enemies" ids="Off,On"/>
 
 		<dip bits="8,9" name="CoinA" ids="2C/1C,1C/1C,1C/2C,Free Play"/>
-		<dip bits="10,11" name="CoinB" ids="3C/1C,2C/3C,1C/3C,1C/6C"/>
-		<dip bits="12" name="Difficulty" ids="Easy,Hard"/>
+		<dip bits="10,11" name="CoinB" ids="2C/1C,1C/1C,2C/3C,1C/2C"/>
+		<dip bits="12" name="Difficulty" ids="Hard,Easy"/>
 		<dip bits="13" name="Flip Screen" ids="Off,On"/>
+		<dip bits="14,15" name="Allow Continue" ids="No,3 Times,5 Times,99 Times"/>
 
 	</switches>
 
