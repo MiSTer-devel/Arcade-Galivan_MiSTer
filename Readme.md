@@ -13,9 +13,9 @@ birdybro
 Christopher Garland
 Cory Stargel
 Cyrille Jouineau
+Darren Chell
 Dave Ely
 Dimitris Zongas
-Filip Kindt
 Francois P
 Funkycochise
 Gentlemen's Pixel Club
@@ -27,9 +27,11 @@ Humanoide70
 J BG
 Johan Sjöstrand
 John Stringer
+José López Navarrete
 Juan Carlos Pastor (Denymetanol)
 Matt Hargett
 Max
+Max Riptide
 Michael Packard
 Mike Holzinger
 MiSTerFPGA.co.uk
@@ -42,3 +44,6 @@ SwedishGojira
 Tonton Kaloun
 wwark
 yomitron
+
+
+
