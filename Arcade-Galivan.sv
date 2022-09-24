@@ -211,6 +211,10 @@ localparam CONF_STR = {
   "O5,Orientation,Vert,Horz;",
   "OB,HFlip,Off,On;",
   "-;",
+  "P2,Screen Centering;",
+	"P2oRU,H Center,0,+1,+2,+3,+4,+5,+6,+7,-8,-7,-6,-5,-4,-3,-2,-1;",
+	"P2oNQ,V Center,0,+1,+2,+3,+4,+5,+6,+7,-8,-7,-6,-5,-4,-3,-2,-1;",
+  "-;",
   "P1,Debug Options;",
   "P1-;",
   "P1-, -= Debug Options =-;",
@@ -310,8 +314,10 @@ video video(
   .hb     ( HBlank  ),
   .vb     ( VBlank  ),
   .hcount ( hcount  ),
-  .vcount ( vcount  )
-);
+  .vcount ( vcount  ),
+  .hoffs (status[62:59]),
+  .voffs (status[58:55])
+);	
 
 arcade_video #(256,8,0) arcade_video(
   .*,
