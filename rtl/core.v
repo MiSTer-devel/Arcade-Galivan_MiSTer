@@ -449,7 +449,7 @@ gfx gfx(
   .r            ( red                      ),
   .g            ( green                    ),
   .b            ( blue                     ),
-  .h_flip       ( flip                     ),
+  .h_flip       ( hflip                    ),
   .v_flip       ( hflip                    ),
 
   .hb           ( hb                       ),
