@@ -302,7 +302,7 @@ reg  [2:0] vred, vgreen;
 reg  [1:0] vblue;
 
 wire clk_vid;
-clk_en clk_en_main(clk_sys, clk_vid, 16'd8);
+clk_en clk_en_main(clk_sys, clk_vid, 16'd7);
 
 wire  ce_pix = clk_vid;
 wire [2:0] fx = status[17:15];

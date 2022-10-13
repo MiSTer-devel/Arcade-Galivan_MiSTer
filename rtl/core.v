@@ -61,7 +61,7 @@ reg oldvs;
 always @(posedge clk_sys) begin
   oldvs <= vs;
   if (oldvs & ~vs) mcpu_int_n <= 1'b0;
-  if (~acpu_iorq_n & ~acpu_m1_n) mcpu_int_n <= 1'b1;
+  if (~mcpu_iorq_n & ~mcpu_m1_n) mcpu_int_n <= 1'b1;
 end
 
 tv80s mcpu(
@@ -333,6 +333,7 @@ dpram #(11,8) acpu_ram(
 reg [7:0] acpu_io_data;
 reg [7:0] ym3526_din;
 reg       ym3526_write;
+reg  [7:0] dac1, dac2;
 
 always @(posedge clk_sys) begin
   clear_latch <= 1'b0;
@@ -341,32 +342,36 @@ always @(posedge clk_sys) begin
     case (acpu_addr[7:0])
       8'h00,
       8'h01: ym3526_write <= 1'b1;
-      8'h02: /*dac1 write*/;
-      8'h03: /*dac2 write*/;
+      8'h02: dac1 <= acpu_dout;
+      8'h03: dac2 <= acpu_dout;
       8'h04: clear_latch <= 1'b1;
       8'h06: acpu_io_data <= snd_latch;
+      default: ;
     endcase
   end
 end
+wire snd_latch_cs = ~acpu_iorq_n & acpu_m1_n & acpu_addr[7:0] == 8'h06;
 
 /******** YM3526 ********/
 
 wire ym3526_addr = acpu_addr[0];
+wire ym3526_cs = ~acpu_iorq_n & acpu_m1_n & acpu_addr[7:1] == 0;
 
 jtopl ym3526(
     .rst    ( reset         ),
     .clk    ( clk_sys       ),
-    .cen    ( clk_en_6      ),
+    .cen    ( clk_en_4      ),
     .din    ( acpu_dout     ),
     .addr   ( ym3526_addr   ),
-    .cs_n   ( 1'b0          ),
-    .wr_n   ( ~ym3526_write ),
+    .cs_n   ( ~ym3526_cs    ),
+    .wr_n   ( acpu_wr_n     ),
     .dout   (               ),
     .irq_n  (               ),
-    .snd    ( sound         ),
+    .snd    ( ym_sound      ),
     .sample (               )
 );
-
+wire [15:0] ym_sound;
+assign sound = ym_sound + {dac1, 5'd0} + {dac2, 5'd0};
 
 /******** ACPU DATA BUS ********/
 
@@ -377,7 +382,7 @@ always @(posedge clk_sys)
       acpu_ram_en  ? acpu_ram_q   :
       acpu_rom1_en ? acpu_rom1_q  :
       acpu_rom2_en ? acpu_rom2_q  :
-      8'd0;
+      8'hFF; // RST38h - important, as the code mistakenly enables interrupts in IM0 mode
 
 /********* GFX ********/
 
@@ -504,20 +509,20 @@ dpram #(16,8) gfx_rom3(
 );
 
 dpram #(14,8) gfx_rom41(
-  .clock     ( clk_sys         ),
+  .clock     ( clk_sys          ),
   .address_a ( gfx_rom41_addr   ),
-  .data_a    ( gfx_rom_data    ),
+  .data_a    ( gfx_rom_data     ),
   .q_a       ( gfx_rom41_q      ),
-  .rden_a    ( 1'b1            ),
+  .rden_a    ( 1'b1             ),
   .wren_a    ( gfx_rom41_wren_a )
 );
 
 dpram #(14,8) gfx_rom42(
-  .clock     ( clk_sys         ),
+  .clock     ( clk_sys          ),
   .address_a ( gfx_rom42_addr   ),
-  .data_a    ( gfx_rom_data    ),
+  .data_a    ( gfx_rom_data     ),
   .q_a       ( gfx_rom42_q      ),
-  .rden_a    ( 1'b1            ),
+  .rden_a    ( 1'b1             ),
   .wren_a    ( gfx_rom42_wren_a )
 );
 
