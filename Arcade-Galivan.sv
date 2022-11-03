@@ -301,14 +301,12 @@ wire [8:0] hcount, vcount;
 reg  [2:0] vred, vgreen;
 reg  [1:0] vblue;
 
-wire clk_vid;
-clk_en clk_en_main(clk_sys, clk_vid, 16'd7);
-
-wire  ce_pix = clk_vid;
+wire ce_pix;
 wire [2:0] fx = status[17:15];
 
 video video(
-  .clk    ( clk_vid ),
+  .clk    ( clk_sys ),
+  .ce_pix ( ce_pix  ),
   .hs     ( HSync   ),
   .vs     ( VSync   ),
   .hb     ( HBlank  ),
@@ -317,7 +315,7 @@ video video(
   .vcount ( vcount  ),
   .hoffs (status[62:59]),
   .voffs (status[58:55])
-);	
+);
 
 arcade_video #(256,8,0) arcade_video(
   .*,
@@ -375,6 +373,7 @@ wire [7:0] system = { 3'b111, service , ~joy0[9], ~joy0[5], ~joy0[8], ~joy0[4] }
 core u_core(
   .reset          ( reset            ),
   .clk_sys        ( clk_sys          ),
+  .ce_pix         ( ce_pix           ),
   .j1             ( j1               ),
   .j2             ( j2               ),
   .p1             ( p1               ),

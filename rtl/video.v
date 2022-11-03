@@ -1,6 +1,7 @@
 
 module video(
   input clk,
+  input ce_pix,
   output reg hs,
   output reg vs,
   output reg hb,
@@ -19,24 +20,26 @@ end
 
 always @(posedge clk) begin
   frame <= 1'b0;
-  hcount <= hcount + 9'd1;
-  case (hcount)
-    1: hb <= 1'b0;
-    256: hb <= 1'b1;
-    (271 - $signed(hoffs)): hs <= 1'b0;
-    (295 - $signed(hoffs)): hs <= 1'b1;
-    (335): begin
-      vcount <= vcount + 9'd1;
-      hcount <= 9'b0;
-      case (vcount)
-         15: vb <= 1'b0;
-        239: vb <= 1'b1;
-        (249 - $signed(voffs)) : vs <= 1'b0;
-        (252 - $signed(voffs)) : vs <= 1'b1;
-        272: vcount <= 9'd0;
-      endcase
-    end
-  endcase
+  if (ce_pix) begin
+    hcount <= hcount + 9'd1;
+    case (hcount)
+      16: hb <= 1'b0;
+      271: hb <= 1'b1;
+      (308 - $signed(hoffs)): hs <= 1'b0;
+      (340 - $signed(hoffs)): hs <= 1'b1;
+      (383): begin
+        vcount <= vcount + 9'd1;
+        hcount <= 9'b0;
+        case (vcount)
+          15: vb <= 1'b0;
+          239: vb <= 1'b1;
+          (249 - $signed(voffs)) : vs <= 1'b0;
+          (252 - $signed(voffs)) : vs <= 1'b1;
+          262: vcount <= 9'd0;
+        endcase
+      end
+    endcase
+  end
 end
 
 endmodule

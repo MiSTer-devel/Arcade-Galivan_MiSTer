@@ -2,6 +2,7 @@
 module core(
   input reset,
   input clk_sys,
+  output ce_pix,
 
   input [7:0] j1,
   input [7:0] j2,
@@ -44,6 +45,8 @@ wire clk_en_4, clk_en_6, acpu_irq_en;
 clk_en mcpu_clk_en(clk_sys, clk_en_6, 16'd7, fdiv);
 clk_en acpu_clk_en(clk_sys, clk_en_4, 16'd11);
 clk_en acpu_irq_cen(clk_sys, acpu_irq_en, 16'd6400);
+
+assign ce_pix = clk_en_6;
 
 /******** MCPU ********/
 
